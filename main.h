@@ -9,6 +9,9 @@
 #ifndef OrbitYosoku_main_h
 #define OrbitYosoku_main_h
 
+#define KINECT_WIDTH 640
+#define KINECT_HEIGHT 480
+
 void display();
 //void resize(int, int);
 
@@ -18,13 +21,13 @@ xn::ImageGenerator imageGenerator;
 xn::DepthMetaData depthMD;
 xn::ImageMetaData imageMD;
 xn::Context context;
+
 //OpenCV
 cv::Mat image;         //RGB画像
 cv::Mat hsvimage;         //HSV画像
 cv::Mat depth;        //深度画像
 
 int key;
-PFilter* pf;
 //FPS
 int cnt = 0; // frame数
 int oldcnt = 0; // 前フレーム数

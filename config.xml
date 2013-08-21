@@ -1,0 +1,41 @@
+<OpenNI>
+  <!-- ライセンス情報 -->
+  <Licenses>
+    <!--
+	<License vendor="VENDOR_NAME" key="LICENSE_KEY"/>
+	-->
+    </Licenses>
+  
+  <!-- ログ情報 -->
+  <Log writeToConsole="true" writeToFile="false">
+    <!-- ログレベル　0:Verbose, 1:Info, 2:Warning -->
+    <LogLevel value="2"/>
+    <Masks>
+      <Mask name="ALL" on="true"/>
+    </Masks>
+    <Dumps>
+    </Dumps>
+  </Log>
+
+  <!-- プロダクションノード -->
+  <ProductionNodes>
+    <Node type="Image" name="Image1">
+      <Configuration>
+	<MapOutputMode xRes="640" yRes="480" FPS="30" /> 
+	<Mirror on="false" /> 
+      </Configuration>
+    </Node>
+    <Node type="Depth" name="Depth1">
+      <Configuration>
+	<MapOutputMode xRes="640" yRes="480" FPS="30" /> 
+	<Mirror on="false" /> 
+      </Configuration>
+    </Node>
+    <!-- <Node type="Image" name="Image1" stopOnError="false">
+    </Node>
+    <Node type="Depth" name="Depth1" stopOnError="false">
+    </Node>
+    <Node type="Hands" />
+    <Node type="User" /> -->
+  </ProductionNodes>
+</OpenNI>

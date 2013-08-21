@@ -13,52 +13,51 @@
 #include <math.h>
 #include <GL/glut.h>
 
-//#include <opencv2/opencv.hpp>
-//#include <opencv2/highgui/highgui.hpp>
-//#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
-#include <opencv/cv.h>
-#include <opencv/highgui.h>
-#include <opencv2/legacy/legacy.hpp>
-#include "PFilter.h"
+//#include <opencv/cv.h>
+//#include <opencv/highgui.h>
+//#include <opencv2/legacy/legacy.hpp>
 #include "main.h"
 
+
 // 設定ファイルのパス
-const char* CONFIG_XML_PATH = "/home/shuhei/workspace/kinect/config.xml";
+const char* CONFIG_XML_PATH = "config.xml";
 
 void init()
 {
-    image = cv::Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);         //RGB画像
-    hsvimage = cv::Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);         //HSV画像
-    depth = cv::Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_16UC1);        //深度画像
-    pf = new PFilter(&depthGenerator);
-    
-    //OpenNIの初期化
-    XnStatus status = context.InitFromXmlFile(CONFIG_XML_PATH);
-	if(status != XN_STATUS_OK){
-		std::cout << xnGetStatusString(status) << std::endl;
-        exit(0);
-	}
-
-    context.FindExistingNode(XN_NODE_TYPE_DEPTH, depthGenerator);
-    context.FindExistingNode(XN_NODE_TYPE_IMAGE, imageGenerator);
-    
-    //RGB画像と振動画像のズレを補正
-    depthGenerator.GetAlternativeViewPointCap().SetViewPoint(imageGenerator);
-    
-    cvNamedWindow ("Condensation", CV_WINDOW_AUTOSIZE);
-    
-    cvCreateTrackbar("Hue", "Condensation", &pf->Hue, 180);
-    cvCreateTrackbar("LIKELIHOOD_SIGMA", "Condensation", &pf->LIKELIHOOD_SIGMA, 100);
-    cvCreateTrackbar("Depth", "Condensation", &pf->Depth, 255);
-    
+  image = cv::Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);         //RGB画像
+  hsvimage = cv::Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);         //HSV画像
+  depth = cv::Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_16UC1);        //深度画像
+  
+  //OpenNIの初期化
+  XnStatus status = context.InitFromXmlFile(CONFIG_XML_PATH, 0);
+  if(status != XN_STATUS_OK){
+    std::cout << xnGetStatusString(status) << std::endl;
+    exit(0);
+  }
+  
+  context.FindExistingNode(XN_NODE_TYPE_DEPTH, depthGenerator);
+  context.FindExistingNode(XN_NODE_TYPE_IMAGE, imageGenerator);
+  
+  //RGB画像と振動画像のズレを補正
+  depthGenerator.GetAlternativeViewPointCap().SetViewPoint(imageGenerator);
+  cv::namedWindow ("RGBImage", CV_WINDOW_AUTOSIZE);
+  cv::namedWindow ("DepthImage", CV_WINDOW_AUTOSIZE);
+  
+  //cv::createTrackbar("Hue", "Condensation", &pf->Hue, 180);
+  //cv::createTrackbar("LIKELIHOOD_SIGMA", "Condensation", &pf->LIKELIHOOD_SIGMA, 100);
+  //cv::CcreateTrackbar("Depth", "Condensation", &pf->Depth, 255);
+ 
 }
 
 void end()
 {
-    cvDestroyAllWindows();
-    delete pf;
-    context.Shutdown();
+  cv::destroyWindow("RGBImage");
+  cv::destroyWindow("DepthImage");
+  context.Release();
 }
 //ポイントクラウド描画
 void drawPointCloud(cv::Mat &rgbImage,cv::Mat &pointCloud_XYZ){
@@ -98,8 +97,6 @@ void retrievePointCloudMap(cv::Mat &depth,cv::Mat &pointCloud_XYZ){
 
 void display()
 {
-    int x, y;
-    
     // clear screen and depth buffer
     glClear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Reset the coordinate system before modifying
@@ -120,10 +117,6 @@ void display()
     //3次元ポイントクラウドのための座標変換
     retrievePointCloudMap(depth,pointCloud_XYZ);
 
-    pf->resample_predict();
-    pf->weight_particle(hsvimage, depth);
-    //pf->weight_particle(image, depth);
-    
     
     //視点の変更
     polarview();
@@ -134,30 +127,8 @@ void display()
     glPointSize(2);   //点の大きさ
     glBegin(GL_POINTS);  //今から点を描画しますよっと
     glColor3i(255, 0, 0);
-    bool particle_exist = false;
-    for (int i=0; i < N_PARTICLE; i++) {
-        if (pf->cond->flConfidence[i] != 0.0) {
-            particle_exist = true;
-            x = (pf->cond->flSamples[i][0]);
-            y = (pf->cond->flSamples[i][1]);
-        
-            //OpenCVの画面上に描画
-            cv::circle (image, cvPoint(x, y), 2, CV_RGB(255,0,0), -1);
-            
-            //OpenGLの画面上に描画
-            //Point3f &point = &pointCloud_XYZ.at<Point3f>(y,x);
-            cv::Point3f &point = ((cv::Point3f*)(pointCloud_XYZ.data + pointCloud_XYZ.step.p[0]*y))[x];
-            //if(point.z == 0)  //奥行きがとれてなければ描画しない
-            //    continue;
-            glVertex3f(point.x,point.y,point.z);
-        }
-    }
-    if (particle_exist == false) {
-        //全部のパーティクルおかしくなったのでリセット
-        // (6)Condensation構造体を初期化する
-        pf->reset();
-        std::cout << "reset" << std::endl;
-    }
+
+
     glEnd();  //描画終了
     
     // FPS表示
@@ -177,7 +148,8 @@ void display()
     cv::putText(image, number, cvPoint(2, 28), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0,0,200), 2, CV_AA);
     cnt++;
     
-    cv::imshow("Condensation", image);
+    cv::imshow("RGBImage", image);
+    cv::imshow("DepthImage", depth);
     glFlush();
     glutSwapBuffers();
 }
