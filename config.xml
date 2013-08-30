@@ -31,11 +31,7 @@
 	<Mirror on="false" /> 
       </Configuration>
     </Node>
-    <!-- <Node type="Image" name="Image1" stopOnError="false">
-    </Node>
-    <Node type="Depth" name="Depth1" stopOnError="false">
-    </Node>
-    <Node type="Hands" />
-    <Node type="User" /> -->
+    <Node type="Scene" />
+
   </ProductionNodes>
 </OpenNI>
