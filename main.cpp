@@ -56,10 +56,10 @@ void init()
     namedWindow ("Mask", CV_WINDOW_AUTOSIZE);
     namedWindow ("Centroid", CV_WINDOW_AUTOSIZE);
     
-    bgs_rgb = new BGS;
-    bgs_depth = new BGS;
-    createTrackbar("rgb_thresh", "Mask", &bgs_rgb->threshold, 100);
-    createTrackbar("depth_thresh", "Mask", &bgs_depth->threshold, 100);
+    bgs_rgb = new BGS(getImage);
+    bgs_depth = new BGS(getDepth);
+    //createTrackbar("rgb_thresh", "Mask", &bgs_rgb->B_PARAM, 100);
+    //createTrackbar("depth_thresh", "Mask", &bgs_depth->T_PARAM, 100);
     
     lsm_x = new LSM;
     lsm_y = new LSM;
@@ -80,6 +80,33 @@ void end()
     delete lsm_X;
     delete lsm_Y;
 }
+Mat getImage(){
+    imageGenerator.WaitAndUpdateData();
+    imageGenerator.GetMetaData(imageMD);
+    memcpy(image.data,imageMD.Data(),image.step * image.rows);    //イメージデータを格納
+    cvtColor(image, image, CV_BGR2RGB);     //BGRをRGBに
+    return image;
+}
+
+Mat getDepth(){
+    cv::vector<cv::Mat> channels;
+    cv::Mat zeroch; //深度画像3ch
+    zeroch = Mat::zeros(KINECT_HEIGHT, KINECT_WIDTH, CV_8UC1);
+    Mat depth_3ch;
+    
+    depthGenerator.WaitAndUpdateData();
+    depthGenerator.GetMetaData(depthMD);
+    memcpy(depth.data,depthMD.Data(),depth.step * depth.rows);    //イメージデータを格納
+    depth.convertTo(depth_8UC1, CV_8UC1); //深度画像を16bit->8bitに
+    
+    channels.push_back(zeroch);
+    channels.push_back(zeroch);
+    channels.push_back(depth_8UC1);
+    merge(channels, depth_3ch);
+
+    return depth_3ch;
+}
+
 string getFPS()
 {
     // FPS表示
@@ -154,9 +181,18 @@ void update()
     retrievePointCloudMap(depth,pointCloud_XYZ);
     
     //RGB画像と深度画像でそれぞれ背景差分
+    cv::vector<cv::Mat> channels;
+    cv::Mat zeroch; //深度画像3ch
+    zeroch = Mat::zeros(KINECT_HEIGHT, KINECT_WIDTH, CV_8UC1);
+    Mat depth_3ch;
     depth.convertTo(depth_8UC1, CV_8UC1); //深度画像を16bit->8bitに
+    channels.push_back(zeroch);
+    channels.push_back(zeroch);
+    channels.push_back(depth_8UC1);
+    merge(channels, depth_3ch);
+    
     bgs_rgb->process(image, image_mask);
-    bgs_depth->process(depth_8UC1, depth_mask);
+    bgs_depth->process(depth_3ch, depth_mask);
     
     //imshow("RGBImage", image);
     //imshow("DepthImage", depth);

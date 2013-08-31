@@ -1,0 +1,9 @@
+/* [wxMaxima batch file version 1] [ DO NOT EDIT BY HAND! ]*/
+/* [ Created with wxMaxima version 12.08.0 ] */
+
+/* [wxMaxima: input   start ] */
+linsolve([sx*c+sx2*b+sx3*a=sxy, sx2*c+sx3*b+sx4*a=sx2y], [a,b]);
+/* [wxMaxima: input   end   ] */
+
+/* Maxima can't load/batch files which end with a comment! */
+"Created with wxMaxima"$

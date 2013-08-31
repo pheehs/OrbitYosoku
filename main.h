@@ -54,6 +54,9 @@ LSM* lsm_Y;
 pthread_t process_th;
 bool status = true; //true:running/false:time to kill
 
+cv::Mat getImage();
+cv::Mat getDepth();
+
 extern void graphic_main(int argc, char* argv[]);
 
 #endif

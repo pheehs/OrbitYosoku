@@ -5,21 +5,24 @@
 //  Created by pheehs on 13/08/23.
 //  Copyright (c) 2013年 Kph-lab. All rights reserved.
 //
-//ref: https://code.google.com/p/bgslibrary/
+//ref: http://opencv.jp/sample/accumulation_of_background.html
 
 #ifndef __OrbitYosoku__bgs__
 #define __OrbitYosoku__bgs__
 
-#include <opencv2/opencv.hpp>
-
 class BGS
 {
 private:
-    cv::Mat img_input_prev;
-    cv::Mat img_diff;
+    int INIT_TIME;
+    cv::Mat av_img, sgm_img, tmp_img, lower_img, upper_img;
+    cv::Mat dst_img, msk_img;
 public:
-    int threshold;
-    BGS();
+    double B_PARAM;
+    double T_PARAM;
+    double Zeta;
+
+    BGS(cv::Mat (*getFrame)());
+
     void process(const cv::Mat &img_input, cv::Mat &img_output);
 };
 
