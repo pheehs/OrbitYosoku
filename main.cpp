@@ -170,6 +170,7 @@ void update()
     
     imageGenerator.GetMetaData(imageMD);
     depthGenerator.GetMetaData(depthMD);
+    sceneAnalyzer.GetFloor(plane);
     
     memcpy(image.data,imageMD.Data(),image.step * image.rows);    //イメージデータを格納
     memcpy(depth.data,depthMD.Data(),depth.step * depth.rows);    //深度データを格納
@@ -271,8 +272,6 @@ void update()
     }
     
     
-    sceneAnalyzer.GetFloor(plane);
-    //cout << "point(" << plane.ptPoint.X << "," << plane.ptPoint.Y << "," << plane.ptPoint.Z << "), normal(" << plane.vNormal.X << "," << plane.vNormal.Y << "," << plane.vNormal.Z << ")" << endl ;
 }
 
 void* mainloop(void* args)
@@ -310,7 +309,6 @@ int main(int argc, char *argv[])
         cout << "failed to create thread" << endl;
         exit(1);
     }
-    //mainloop(NULL);
     graphic_main(argc, argv);
     
     return 0;

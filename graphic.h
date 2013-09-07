@@ -29,6 +29,7 @@ extern cv::Mat image;         //RGB画像
 extern cv::Mat pointCloud_XYZ; //ポイントクラウド
 extern cv::Point3f center3d;
 extern cv::Point3f predict3d;
+extern XnPlane3D plane;
 extern void finish();
 
 void polarview();
