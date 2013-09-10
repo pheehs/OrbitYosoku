@@ -14,15 +14,18 @@ using namespace std;
 
 const double f = (1000 /cv::getTickFrequency());
 
-LSM::LSM():a(0),b(0),c(0)
+LSM::LSM():a(0),b(0),c(0),d(0),e(0)
 {
     tick();
 }
 void LSM::tick()
 {
     // 物体が見つからなかったとき
-    x = (unsigned int)-1;
+    t = (unsigned int)-1;
     s1 = 0;
+    st = 0;
+    st2 = 0;
+    stx = 0;
     sx = 0;
     sx2 = 0;
     sx3 = 0;
@@ -30,33 +33,44 @@ void LSM::tick()
     sy = 0;
     sxy = 0;
     sx2y = 0;
+    z = 0;
 }
-void LSM::process(int y)
+void LSM::process(cv::Point3f datapoint)
 {
     // 物体が見つかったとき
-    if (x == (unsigned int)-1) {
+    if (t == (unsigned int)-1) {
         //１回目
-        cout << "-----------------------------------------------------" << endl;
+        cout << "------------------<LSM>object found!--------------------------------" << endl;
         start_time = cv::getTickCount();
-        x = 0;
+        t = 0;
         a = 0;
-        b = 0;
-        c = y;
+        b = datapoint.x;
+        c = 0;
+        d = 0;
+        e = datapoint.y;
+        z = datapoint.z;
         return;
     }
     //２回目以降
-    x = (unsigned int)((cv::getTickCount() - start_time)*f); //ms
+    t = (unsigned int)((cv::getTickCount() - start_time)*f); //ms
     
     s1++;
-    sx += x;
-    sx2 += x*x;
-    sx3 += x*x*x;
-    sx4 += x*x*x*x;
-    sy += y;
-    sxy += x*y;
-    sx2y += x*x*y;
+    st += t;
+    st2 += t*t;
+    stx += t*datapoint.x;
+    sx += datapoint.x;
+    sx2 += datapoint.x*datapoint.x;
+    sx3 += datapoint.x*datapoint.x*datapoint.x;
+    sx4 += datapoint.x*datapoint.x*datapoint.x*datapoint.x;
+    sy += datapoint.y;
+    sxy += datapoint.x*datapoint.y;
+    sx2y += datapoint.x*datapoint.x*datapoint.y;
+    //printf("t:%u\n",t);
     //printf("x:%u\n", x);
     //printf("s1:%llu\n", s1);
+    //printf("st:%llu\n", st);
+    //printf("st2:%llu\n", st2);
+    //printf("stx:%llu\n", stx);
     //printf("sx:%llu\n", sx);
     //printf("sx2:%llu\n", sx2);
     //printf("sx3:%llu\n", sx3);
@@ -65,31 +79,31 @@ void LSM::process(int y)
     //printf("sxy:%lld\n", sxy);
     //printf("sx2y:%lld\n", sx2y);
     
-    if ((sx3*sx3-sx2*sx4)!=0) {
-        a = ((double)(sxy*sx3-sx2y*sx2+(sx2*sx2-sx*sx3)*c))/(sx3*sx3-sx2*sx4);
-        b = ((double)(sx2y*sx3-sx4*sxy+(sx*sx4-sx2*sx3)*c))/(sx3*sx3-sx2*sx4);
+    if ((sx3*sx3-sx2*sx4)!=0 && (stx*st-sx*st2)!=0) {
+        a = ((double)(st*sx-stx*s1)*b)/(stx*st-sx*st2);
+        c = ((double)(sxy*sx3-sx2y*sx2+(sx2*sx2-sx*sx3)*c))/(sx3*sx3-sx2*sx4);
+        d = ((double)(sx2y*sx3-sx4*sxy+(sx*sx4-sx2*sx3)*c))/(sx3*sx3-sx2*sx4);
     } else {
         cout << "zero divide" << endl;
     }
-    /*
-     if ((2*sx*sx2*sx3+s1*sx2*sx4-sx*sx*sx4-s1*sx3*sx3-sx2*sx2*sx2)!=0 && (2*sx*sx2*sx3+s1*sx2*sx4-sx*sx*sx4-s1*sx3*sx3-sx2*sx2*sx2)!=0 && (2*sx*sx2*sx3+s1*sx2*sx4-sx*sx*sx4-s1*sx3*sx3-sx2*sx2*sx2)!=0) {
-        a = ((double)(s1*sx2*sx2y-sx*sx*sx2y+sx*sx2*sxy-s1*sx3*sxy+sx*sx3*sy-sx2*sx2*sy))/(2*sx*sx2*sx3+s1*sx2*sx4-sx*sx*sx4-s1*sx3*sx3-sx2*sx2*sx2);
-        b = ((double)(sx*sx2*sx2y-s1*sx3*sx2y+s1*sx4*sxy-sx2*sx2*sxy+sx2*sx3*sy-sx*sx4*sy))/(2*sx*sx2*sx3+s1*sx2*sx4-sx*sx*sx4-s1*sx3*sx3-sx2*sx2*sx2);
-        c = ((double)(-sx2*sx2*sx2y+sx*sx3*sx2y-sx*sx4*sxy+sx2*sx3*sxy-sx3*sx3*sy+sx2*sx4*sy))/(2*sx*sx2*sx3+s1*sx2*sx4-sx*sx*sx4-s1*sx3*sx3-sx2*sx2*sx2);
-    }else {
-        cout << "zero divide" << endl;
-    }
-     */
     
     return;
 }
-int LSM::predict()
+cv::Point3f LSM::predict()
 {
-    int x_ = (unsigned int)((cv::getTickCount() - start_time)*f); //ms
-    return a * x_*x_ + b * x_ + c;
+    cv::Point3f dest;
+    int t_ = (unsigned int)((cv::getTickCount() - start_time)*f); //ms
+    dest.x = a * t_ + b;
+    dest.y = c*dest.x*dest.x + d*dest.x + e;
+    dest.z = z;
+    return dest;
 }
 
-int LSM::predict(int x_)
+cv::Point3f LSM::predict(int t_)
 {
-    return a * x_*x_ + b * x_ + c;
+    cv::Point3f dest;
+    dest.x = a * t_ + b;
+    dest.y = c*dest.x*dest.x + d*dest.x + e;
+    dest.z = z;
+    return dest;
 }

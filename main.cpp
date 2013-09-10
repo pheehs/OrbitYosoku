@@ -30,12 +30,6 @@ const char* CONFIG_XML_PATH = "/Users/shuhei/workspace/kinect/OrbitYosoku/OrbitY
 
 void init()
 {
-    image = Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);         //RGB画像
-    hsvimage = Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);         //HSV画像
-    depth = Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_16UC1);        //深度画像16bit
-    depth_8UC1 = Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC1);        //深度画像8bit
-    pointCloud_XYZ = Mat(KINECT_HEIGHT,KINECT_WIDTH,CV_32FC3,cv::Scalar::all(0)); //ポイントクラウド
-    
     //OpenNIの初期化
     XnStatus r = context.InitFromXmlFile(CONFIG_XML_PATH, 0);
     if(r != XN_STATUS_OK){
@@ -61,11 +55,8 @@ void init()
     //createTrackbar("rgb_thresh", "Mask", &bgs_rgb->B_PARAM, 100);
     //createTrackbar("depth_thresh", "Mask", &bgs_depth->T_PARAM, 100);
     
-    lsm_x = new LSM;
-    lsm_y = new LSM;
-    lsm_z = new LSM;
-    lsm_X = new LSM;
-    lsm_Y = new LSM;
+    lsm_XY = new LSM;
+
 }
 
 void end()
@@ -74,11 +65,7 @@ void end()
     context.Release();
     delete bgs_rgb;
     delete bgs_depth;
-    delete lsm_x;
-    delete lsm_y;
-    delete lsm_z;
-    delete lsm_X;
-    delete lsm_Y;
+    delete lsm_XY;
 }
 Mat getImage(){
     imageGenerator.WaitAndUpdateData();
@@ -135,10 +122,12 @@ Point3f getCentroid(Mat mask, Mat pointCloud)
         for (int x = 0; x < KINECT_WIDTH; x++) {
             if (mask.at<int>(y,x)) {
                 point = pointCloud.at<Point3f>(y, x);
-                sumX += point.x;
-                sumY += point.y;
-                sumZ += point.z;
-                counter++;
+                if (point.z != 0) {
+                    sumX += point.x;
+                    sumY += point.y;
+                    sumZ += point.z;
+                    counter++;
+                }
             }
             
         }
@@ -160,6 +149,148 @@ void retrievePointCloudMap(Mat &depth,Mat &pointCloud_XYZ){
     //現実座標に変換
     depthGenerator.ConvertProjectiveToRealWorld(KINECT_HEIGHT*KINECT_WIDTH, proj, (XnPoint3D*)pointCloud_XYZ.data);
 }
+float at_float(Mat mat, int y, int x) {
+    return ((float*)(mat.data + mat.step.p[0]*y))[x];
+}
+void convertRealToProjective(Point3f &src, Point2f &dest) {
+    static XnPoint3D proj;
+    proj.X = (XnFloat)src.x;
+    proj.Y = (XnFloat)src.y;
+    proj.Z = (XnFloat)src.z;
+    //printf("real(%f,%f,%f)  ->  ",proj.X,proj.Y,proj.Z);
+    depthGenerator.ConvertRealWorldToProjective(1, &proj, &proj);
+    //printf("proj(%f,%f,%f)\n",proj.X,proj.Y,proj.Z);
+    dest.x = proj.X;
+    dest.y = proj.Y;
+}
+//放物線計算用の座標変換
+bool retrieveForParabola(){
+    const float AXIS_THRESH = 10.0;
+    Xaxis_prev = Xaxis.clone();
+    Yaxis_prev = Yaxis.clone();
+    Zaxis_prev = Zaxis.clone();
+    
+    // Z軸は速度ベクトル２つに垂直なベクトルと平行（放物線を含む平面に垂直）
+    vvector2 = vvector1.clone();
+    vvector1.at<float>(0, 0) = (center3d.x - center3d_prev.x)*1000;
+    vvector1.at<float>(1, 0) = (center3d.y - center3d_prev.y)*1000;
+    vvector1.at<float>(2, 0) = (center3d.z - center3d_prev.z)*1000;
+    if (Xaxis_prev.dot(vvector1) < 0) { //YZ平面に対してX軸（今までの進行方向）と逆向きの速度ベクトルの場合（X軸が↑0のときを含まない）
+        cout << "[*] opposite vvector!" << endl;
+        return false; //放物線の運動は終了している
+    }
+    cout << "vvector: " << vvector1 << vvector2 << endl;
+    if (at_float(vvector2,0,0)==0 && at_float(vvector2, 1, 0)==0 && at_float(vvector2, 2, 0)==0) //速度ベクトルがまだ２つ取得できてない
+        return true; //放物線の運動はまだ始まったばかり
+    Zaxis = vvector1.cross(vvector2);
+    if (at_float(Zaxis, 0, 0) == 0 && at_float(Zaxis, 1, 0) == 0 && at_float(Zaxis, 2, 0)) { //２つの速度ベクトルが平行
+        return true; //放物線の運動は続いている可能性がある(放物線の一部を微視的に見れば直線っぽくなる)
+    }
+    Zaxis /= sqrt( at_float(Zaxis,0,0)*at_float(Zaxis,0,0) + at_float(Zaxis,1,0)*at_float(Zaxis,1,0) + at_float(Zaxis,2,0)*at_float(Zaxis,2,0));
+    // Y軸は床の法線ベクトルと平行に（鉛直方向)
+    printf("plane.vNormal: (%f, %f, %f)\n", plane.vNormal.X,plane.vNormal.Y,plane.vNormal.Z);
+    if (plane.vNormal.X == 0 && plane.vNormal.Y == 0 && plane.vNormal.Z == 0) { //床を検出できてない→鉛直方向(Y軸)がわからない
+        cout << "<!> Floor plane is not recognized!" << endl;
+        Yaxis.at<float>(0, 0) = 0;  //とりあえずデフォルトと同じ方向にしておく(errorにしてもよい)
+        Yaxis.at<float>(1, 0) = 1;
+        Yaxis.at<float>(2, 0) = 0;
+    }else {
+        float floor_len = sqrt(plane.vNormal.X*plane.vNormal.X + plane.vNormal.Y*plane.vNormal.Y + plane.vNormal.Z*plane.vNormal.Z);
+        Yaxis.at<float>(0,0) = plane.vNormal.X / floor_len;
+        Yaxis.at<float>(1,0) = plane.vNormal.Y / floor_len;
+        Yaxis.at<float>(2,0) = plane.vNormal.Z / floor_len;
+    }
+    // X軸はY,Z軸に垂直で進行方向と同じ向き
+    Xaxis = Zaxis.cross(Yaxis);
+    Xaxis /= sqrt( at_float(Xaxis,0,0)*at_float(Xaxis,0,0) + at_float(Xaxis,1,0)*at_float(Xaxis,1,0) + at_float(Xaxis,2,0)*at_float(Xaxis,2,0));
+    if (Xaxis.dot(vvector1) < 0)
+        Xaxis *= -1;
+    // 軸のズレを確認
+    Mat Xabsdiff, Yabsdiff,Zabsdiff,Xmaxdiff, Ymaxdiff, Zmaxdiff;
+    float Xmax,Ymax,Zmax;
+    absdiff(Xaxis, Xaxis_prev, Xabsdiff);
+    absdiff(Yaxis, Yaxis_prev, Yabsdiff);
+    absdiff(Zaxis, Zaxis_prev, Zabsdiff);
+    reduce(Xabsdiff, Xmaxdiff, 0,CV_REDUCE_MAX);
+    reduce(Yabsdiff, Ymaxdiff, 0,CV_REDUCE_MAX);
+    reduce(Zabsdiff, Zmaxdiff, 0,CV_REDUCE_MAX);
+    Xmax = at_float(Xmaxdiff,0,0);
+    Ymax = at_float(Ymaxdiff,0,0);
+    Zmax = at_float(Zmaxdiff,0,0);
+    cout << "axis_prev: " << Xaxis_prev << Yaxis_prev << Zaxis_prev << endl;
+    cout << "axis: " << Xaxis << Yaxis << Zaxis << endl;
+    cout << "absdiff: " << Xabsdiff << Yabsdiff << Zabsdiff << endl;
+    cout << "maxdiff: " << Xmaxdiff << Ymaxdiff << Zmaxdiff << endl;
+    if (Xmax < AXIS_THRESH && Ymax < AXIS_THRESH && Zmax < AXIS_THRESH) {
+        //座標変換用の行列
+        Rotate = (Mat_<float>(3,3) <<
+                  at_float(Xaxis,0,0),at_float(Xaxis,1,0),at_float(Xaxis,2,0),
+                  at_float(Yaxis,0,0),at_float(Yaxis,1,0),at_float(Yaxis,2,0),
+                  at_float(Zaxis,0,0),at_float(Zaxis,1,0),at_float(Zaxis,2,0) );
+        Rotate_inv = Rotate.inv();
+    }else {
+        //軸が変動し過ぎ→放物線の運動は終わっている
+        cout << "axis changes too much!" << endl;
+        return false;
+    }
+    return true;
+}
+Point3f convertRealToParabolic(Point3f real) {
+    Mat realmat = (Mat_<float>(3,1) << real.x,real.y,real.z);
+    Mat convertedmat = Rotate * realmat;
+    Point3f converted(convertedmat.at<float>(0,0)*1000,convertedmat.at<float>(1, 0)*1000,convertedmat.at<float>(2, 0)*1000); //m to mm
+    /*if (converted.x/1000 != Rotate.at<float>(0,0)*real.x+Rotate.at<float>(0,1)*real.y+Rotate.at<float>(0,2)*real.z)
+        cout << "r->p invalid x" <<endl;
+    if (converted.y/1000 != Rotate.at<float>(1,0)*real.x+Rotate.at<float>(1,1)*real.y+Rotate.at<float>(1,2)*real.z)
+        cout << "r->p invalid y" <<endl;
+    if (converted.z/1000 != Rotate.at<float>(2,0)*real.x+Rotate.at<float>(2,1)*real.y+Rotate.at<float>(2,2)*real.z)
+        cout << "r->p invalid z" <<endl;*/
+    return converted;
+}
+Point3f convertParabolicToReal(Point3f para) {
+    Mat paramat = (Mat_<float>(3,1) << para.x,para.y,para.z);
+    Mat convertedmat = Rotate_inv * paramat;
+    Point3f converted(convertedmat.at<float>(0,0)/1000,convertedmat.at<float>(1, 0)/1000,convertedmat.at<float>(2, 0)/1000); //mm to m
+    /*if (converted.x != (Rotate_inv.at<float>(0,0)*para.x+Rotate_inv.at<float>(0,1)*para.y+Rotate_inv.at<float>(0,2)*para.z)/1000)
+        cout << "p->r invalid x" <<endl;
+    if (converted.y != (Rotate_inv.at<float>(1,0)*para.x+Rotate_inv.at<float>(1,1)*para.y+Rotate_inv.at<float>(1,2)*para.z)/1000)
+        cout << "p->r invalid y" <<endl;
+    if (converted.z != (Rotate_inv.at<float>(2,0)*para.x+Rotate_inv.at<float>(2,1)*para.y+Rotate_inv.at<float>(2,2)*para.z)/1000)
+        cout << "p->r invalid z" <<endl;*/
+    return converted;
+}
+bool all_zero(Mat mat) {
+    for (int i = 0; i < mat.rows; i++) {
+        const float* mati = mat.ptr<float>(i);
+        for (int j=0; j < mat.cols; j++){
+            if (mati[j] != 0)
+                return false;
+        }
+    }
+    return true;
+}
+//床平面描画
+void drawFloor(Mat dest){
+    //cout << "point(" << plane.ptPoint.X << "," << plane.ptPoint.Y << "," << plane.ptPoint.Z << "), normal(" << plane.vNormal.X << "," << plane.vNormal.Y << "," << plane.vNormal.Z << ")" << endl ;
+    if (plane.vNormal.X == 0 && plane.vNormal.Y == 0 && plane.vNormal.Z == 0){
+        return;
+    }
+    float floor_d = plane.vNormal.X*plane.ptPoint.X + plane.vNormal.Y*plane.ptPoint.Y + plane.vNormal.Z*plane.ptPoint.Z;
+    //printf("floor: %f x + %f y + %f z = %f\n", plane.vNormal.X, plane.vNormal.Y, plane.vNormal.Z, floor_d);
+
+    //printf("(%f, %f, %f)", plane.ptPoint.X,plane.ptPoint.Y,plane.ptPoint.Z);
+    Point3f plane3d;
+    Point2f plane2d;
+    for (int xi = 0; xi < 100; xi++) {
+        for (int yi = 0; yi < 100; yi++) {
+            plane3d = Point3f(plane.ptPoint.X - xi, plane.ptPoint.Y - yi, (floor_d - plane.vNormal.X*(plane.ptPoint.X-xi) - plane.vNormal.Y*(plane.ptPoint.Y-yi)) / plane.vNormal.Z);
+            convertRealToProjective(plane3d, plane2d);
+            circle( dest, plane2d, 8, Scalar(0,200,0), -1, 4, 0 );
+            //printf("(%f,%f,%f)", plane.ptPoint.X + xi, plane.ptPoint.Y + yi, (floor_d - plane.vNormal.X*(plane.ptPoint.X+xi) - plane.vNormal.Y*(plane.ptPoint.Y+yi)) / plane.vNormal.Z);
+        }
+    }
+
+}
 void update()
 {
     Mat image_mask;
@@ -175,17 +306,16 @@ void update()
     memcpy(image.data,imageMD.Data(),image.step * image.rows);    //イメージデータを格納
     memcpy(depth.data,depthMD.Data(),depth.step * depth.rows);    //深度データを格納
     
-    cvtColor(image, hsvimage, CV_BGR2HSV_FULL);	//HSV画像作成
+    //cvtColor(image, hsvimage, CV_BGR2HSV_FULL);	//HSV画像作成
     cvtColor(image, image, CV_BGR2RGB);     //BGRをRGBに
     
     //3次元ポイントクラウドのための座標変換
     retrievePointCloudMap(depth,pointCloud_XYZ);
     
     //RGB画像と深度画像でそれぞれ背景差分
-    cv::vector<cv::Mat> channels;
-    cv::Mat zeroch; //深度画像3ch
-    zeroch = Mat::zeros(KINECT_HEIGHT, KINECT_WIDTH, CV_8UC1);
-    Mat depth_3ch;
+    vector<Mat> channels;
+    Mat zeroch = Mat::zeros(KINECT_HEIGHT, KINECT_WIDTH, CV_8UC1);
+    Mat depth_3ch; //深度画像3ch
     depth.convertTo(depth_8UC1, CV_8UC1); //深度画像を16bit->8bitに
     channels.push_back(zeroch);
     channels.push_back(zeroch);
@@ -202,75 +332,86 @@ void update()
     if (!depth_mask.empty())
         imshow("DepthMask", depth_mask);
     // RGBと深度の両方で検出された領域を抽出
-    bitwise_and(image_mask, depth_mask, mask);
+    bitwise_or(image_mask, depth_mask, mask);
+    // 収縮と膨張でノイズな領域を削除。「重要な処理」
+    erode(mask, mask, Mat());
+    dilate(mask, mask, Mat());
+    dilate(mask, mask, Mat());
+    erode(mask, mask, Mat());
+    bitwise_and(image_mask, mask, mask);
+    // 収縮と膨張でノイズな領域を削除。「重要な処理」
+    erode(mask, mask, Mat());
+    dilate(mask, mask, Mat());
+    dilate(mask, mask, Mat());
+    erode(mask, mask, Mat());
+    
+    Mat centroid = image.clone();
+    //drawFloor(centroid);
+    //Point2f O2d;
+    //Point3f O3d(0,0,0);
+    //convertRealToProjective(O3d, O2d);
+    //cout << "real(0,0,0) -> proj" << O2d << endl;
+    //circle(centroid, O2d, 8, Scalar(200,200,200));
     
     if (!mask.empty()) {
-        // 収縮と膨張でノイズな領域を削除。「重要な処理」
-        erode(mask, mask, Mat());
-        dilate(mask, mask, Mat());
-        dilate(mask, mask, Mat());
-        erode(mask, mask, Mat());
         
         //　画面上での重心を計算
         Moments m = moments(mask, true);
         Point2f center2d(m.m10/m.m00, m.m01/m.m00);
-        Point2f predict2d(lsm_X->predict()/1000, lsm_Y->predict()/1000);
-        
-        /// 重心（赤）と予想した重心（青）の描画
-        Mat centroid = image.clone();
-        circle( centroid, center2d, 8, Scalar(0,0,200), -1, 4, 0 );
-        circle( centroid, predict2d, 8, Scalar(200,0,0), -1, 4, 0 );
-        
-        // 画面上での予測軌道を描画
-        int i = 1;
-        Point2f orbit;
-        do {
-            //0.01sec毎の軌跡
-            orbit = Point2f(lsm_X->predict(lsm_X->x+10*i)/1000, lsm_Y->predict(lsm_Y->x+10*i)/1000);
-            circle( centroid, orbit, 5, Scalar(0,200,0), -1, 4, 0 );
-            i++;
-        } while (0 < orbit.x < KINECT_WIDTH && 0 < orbit.y < KINECT_HEIGHT && i < 1000);
-        //画面外か、10sec以上経過で終了
-        
-        putText(centroid, getFPS(), cvPoint(2, 28), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,200), 2, CV_AA);
-        imshow("Mask", mask);
-        imshow("Centroid", centroid);
-        
         //現実座標での重心を計算
-        center3d = getCentroid(mask, pointCloud_XYZ);
-        predict3d = Point3f(lsm_x->predict()/1000, lsm_y->predict()/1000, lsm_z->predict()/1000);
-    
-        if (center3d.x!=0 && center3d.y!=0 && center3d.z!=0) {
-            // <-- 2D -->
-            printf("center2d: %f, %f\n", center2d.x, center2d.y);
-            printf("predict2d: %f, %f\n", predict2d.x, predict2d.y);
-            //最小二乗法
-            lsm_X->process((int)(center2d.x*1000)); //m to mm
-            lsm_Y->process((int)(center2d.y*1000));
-            printf("X = %f t^2+ %f t+ %f\n", lsm_X->a, lsm_X->b, lsm_X->c);
-            printf("Y = %f t^2+ %f t+ %f\n", lsm_Y->a, lsm_Y->b, lsm_Y->c);
-
-            // <-- 3D -->
-            printf("center3d: %f, %f, %f\n", center3d.x, center3d.y, center3d.z);
-            printf("predict3d: %f, %f, %f\n", predict3d.x, predict3d.y, predict3d.z);
-            //最小二乗法
-            lsm_x->process((int)(center3d.x*1000)); //m to mm
-            lsm_y->process((int)(center3d.y*1000));
-            lsm_z->process((int)(center3d.z*1000));
-            printf("x = %f t^2+ %f t+ %f\n", lsm_x->a, lsm_x->b, lsm_x->c);
-            printf("y = %f t^2+ %f t+ %f\n", lsm_y->a, lsm_y->b, lsm_y->c);
-            printf("z = %f t^2+ %f t+ %f\n", lsm_z->a, lsm_z->b, lsm_z->c);
-            cout << endl;
-        }else{
-            lsm_X->tick();
-            lsm_Y->tick();
-            lsm_x->tick();
-            lsm_y->tick();
-            lsm_z->tick();
+        center3d_prev = center3d;
+        center3d = pointCloud_XYZ.at<Point3f>((int)center2d.y,(int)center2d.x);
+        //center3d = getCentroid(mask, pointCloud_XYZ);
+            
+        if (center3d.x!=0 && center3d.y!=0 && center3d.z!=0 //おそらくありえない座標なのでリセット用に使う
+            && retrieveForParabola()) { //放物運動が続いてるか？　→放物線座標系の変換行列を求める
+            if (!all_zero(Rotate)) { //放物運動が続いていても、始まったばかりで変換行列がまだの時はスルー
+                predict3d = convertParabolicToReal(lsm_XY->predict());
+                
+                /// 重心（赤）と予想した重心（青）の描画
+                Point2f predict2d;
+                convertRealToProjective(predict3d, predict2d);
+                circle( centroid, center2d, 8, Scalar(0,0,200), -1, 4, 0 );
+                circle( centroid, predict2d, 8, Scalar(200,0,0), -1, 4, 0 );
+                
+                // 画面上での予測軌道を描画
+                int i = 1;
+                Point3f orbit3d;
+                Point2f orbit2d;
+                do {
+                    //0.01sec毎の軌跡
+                    orbit3d = convertParabolicToReal(lsm_XY->predict(lsm_XY->t+1*i));
+                    convertRealToProjective(orbit3d, orbit2d);
+                    circle( centroid, orbit2d, 5, Scalar(0,200,0), -1, 4, 0 );
+                    i++;
+                } while (0 < orbit2d.x < KINECT_WIDTH && 0 < orbit2d.y < KINECT_HEIGHT && i < 1000);
+                //画面外か、1sec以上経過で終了
+                
+                printf("center3d: %f, %f, %f\n", center3d.x, center3d.y, center3d.z);
+                printf("predict3d: %f, %f, %f\n", predict3d.x, predict3d.y, predict3d.z);
+                //最小二乗法
+                lsm_XY->process(convertRealToParabolic(center3d));
+                printf("x = %f t+ %f\n", lsm_XY->a, lsm_XY->b);
+                printf("y = %f t^2+ %f t+ %f\n", lsm_XY->c, lsm_XY->d, lsm_XY->e);
+                printf("z = %f\n", lsm_XY->z);
+                cout << endl;
+            }
+        }else{ //物体を見失ったとき
+            //LSMをリセット
+            lsm_XY->tick();
+            //さっきなで追跡してた物体に関する情報をリセット
+            center3d = Point3f(0,0,0);
+            vvector1.zeros(3, 1, CV_32FC1);
+            vvector2.zeros(3, 1, CV_32FC1);
         }
-        
+        imshow("Mask", mask);
+    }else{ //マスクが何故か空のとき
+        center3d = Point3f(0,0,0);
+        vvector1.zeros(3, 1, CV_32FC1);
+        vvector2.zeros(3, 1, CV_32FC1);
     }
-    
+    putText(centroid, getFPS(), cvPoint(2, 28), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,200), 2, CV_AA);
+    imshow("Centroid", centroid);
     
 }
 

@@ -21,14 +21,25 @@ xn::Context context;
 XnPlane3D plane;
 
 //OpenCV
-cv::Mat image;         //RGB画像
-cv::Mat hsvimage;         //HSV画像
-cv::Mat depth;        //深度画像16bit
-cv::Mat depth_8UC1;   //深度画像8bit
-cv::Mat pointCloud_XYZ; //ポイントクラウド
+cv::Mat image(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);         //RGB画像;
+//cv::Mat hsvimage(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC3);      //HSV画像
+cv::Mat depth(KINECT_HEIGHT,KINECT_WIDTH,CV_16UC1);        //深度画像16bit
+cv::Mat depth_8UC1(KINECT_HEIGHT,KINECT_WIDTH,CV_8UC1);    //深度画像8bit
+cv::Mat pointCloud_XYZ(KINECT_HEIGHT,KINECT_WIDTH,CV_32FC3,cv::Scalar::all(0)); //ポイントクラウド
+cv::Mat pointCloud_para(KINECT_HEIGHT,KINECT_WIDTH,CV_32FC3,cv::Scalar::all(0)); //放物線計算用座標
 cv::Point3f center3d;
 cv::Point3f predict3d;
-
+cv::Point3f center3d_prev;
+cv::Mat vvector1 = cv::Mat::zeros(3,1,CV_32FC1); //物体の速度ベクトル１つ目
+cv::Mat vvector2 = cv::Mat::zeros(3,1,CV_32FC1); //速度ベクトル２つ目
+cv::Mat Xaxis = cv::Mat::zeros(3,1,CV_32FC1); //変換後の座標系でのX軸方向の単位ベクトル
+cv::Mat Yaxis = cv::Mat::zeros(3,1,CV_32FC1); //Y軸方向単位ベクトル
+cv::Mat Zaxis = cv::Mat::zeros(3,1,CV_32FC1); //Z軸方向単位ベクトル
+cv::Mat Xaxis_prev = cv::Mat::zeros(3,1,CV_32FC1); //変換後の座標系でのX軸方向の単位ベクトル
+cv::Mat Yaxis_prev = cv::Mat::zeros(3,1,CV_32FC1); //Y軸方向単位ベクトル
+cv::Mat Zaxis_prev = cv::Mat::zeros(3,1,CV_32FC1); //Z軸方向単位ベクトル
+cv::Mat Rotate = cv::Mat::zeros(3, 3, CV_32FC1);
+cv::Mat Rotate_inv = cv::Mat::zeros(3, 3, CV_32FC1);
 
 //FPS
 int cnt = 0; // frame数
@@ -45,17 +56,14 @@ BGS* bgs_rgb;
 BGS* bgs_depth;
 
 /* Least Square Method */
-LSM* lsm_x;
-LSM* lsm_y;
-LSM* lsm_z;
-LSM* lsm_X;
-LSM* lsm_Y;
+LSM* lsm_XY;
 
 pthread_t process_th;
 bool status = true; //true:running/false:time to kill
 
 cv::Mat getImage();
 cv::Mat getDepth();
+float at_float(cv::Mat,int,int);
 
 extern void graphic_main(int argc, char* argv[]);
 

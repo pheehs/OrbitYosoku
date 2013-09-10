@@ -19,7 +19,7 @@ using namespace std;
 using namespace cv;
 
 BGS::BGS(Mat (*getFrame)())
-:INIT_TIME(100),B_PARAM(1.0 / 200.0),T_PARAM(1.0 / 1000.0),Zeta(20.0)
+:INIT_TIME(100),B_PARAM(1.0 / 200.0),T_PARAM(1.0 / 1000.0),Zeta(40.0)
 {
     cout << "Background statistics initialization start" << endl;
     
