@@ -21,7 +21,7 @@ public:
     double T_PARAM;
     double Zeta;
 
-    BGS(cv::Mat (*getFrame)());
+    BGS(cv::Mat (*getFrame)(),float, float, float);
 
     void process(const cv::Mat &img_input, cv::Mat &img_output);
 };

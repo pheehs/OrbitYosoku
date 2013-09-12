@@ -18,12 +18,12 @@ private:
     double st2;  //sigma t^2
     double stx;  //sigma t*x
     double sx;   //sigma x
-    double sx2;  //sigma x^2
-    double sx3;  //sigma x^3
-    double sx4;  //sigma x^4
+
+    double st3;  //sigma t^3
+    double st4;  //sigma t^4
     double sy;   //sigma y
-    double sxy;  //sigma x*y
-    double sx2y; //sigma x^2*y
+    double sty;  //sigma t*y
+    double st2y; //sigma t^2*y
 public:
     unsigned int t;  //time
     float z;

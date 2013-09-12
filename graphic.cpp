@@ -82,17 +82,55 @@ void display()
     //重心の描画
     glBegin(GL_POLYGON);
     
-    glPushMatrix();
-    glColor3f(1.0, 0.0, 0.0);
-    glTranslatef(center3d.x,center3d.y,center3d.z);
-    glutSolidSphere(0.01,10,10);
+    glPushMatrix(); //重心
+    glColor3f(1.0, 0.0, 0.0);//red
+    glTranslatef(center3d_graphic.x,center3d_graphic.y,center3d_graphic.z);
+    glutSolidSphere(0.00,10,10);
     glPopMatrix();
     
-    glPushMatrix();
-    glColor3f(0.0,0.0,1.0);
-    glTranslatef(predict3d.x,predict3d.y,predict3d.z);
-    glutSolidSphere(0.01,10,10);
+    glPushMatrix(); //重心
+    glColor3f(1.0, 0.0, 0.0);//red
+    glTranslatef(center3d_graphic.x,center3d_graphic.y,center3d_graphic.z);
+    glutSolidSphere(0.05,10,10);
     glPopMatrix();
+
+    glPushMatrix(); //的１
+    glColor3f(0.0,1.0,1.0); //skyblue
+    glTranslatef(target[0].x,target[0].y,target[0].z);
+    glutSolidSphere(0.03,10,10);
+    glPopMatrix();
+
+    glPushMatrix(); //的2
+    glColor3f(0.0,1.0,1.0); //skyblue
+    glTranslatef(target[1].x,target[1].y,target[1].z);
+    glutSolidSphere(0.03,10,10);
+    glPopMatrix();
+    
+    glPushMatrix(); //予測点
+    glColor3f(0.0,0.0,1.0); //blue
+    glTranslatef(predict3d.x,predict3d.y,predict3d.z);
+    glutSolidSphere(0.03,10,10);
+    glPopMatrix();
+    
+    for (int i=0; i < 100; i++) { //予測軌道
+        glPushMatrix();
+        switch (crashing[i]) {
+            case 0:
+                glColor3f(1.0,0.0,1.0); //purple
+                break;
+            case 1:
+                glColor3f(1.0,0.0,1.0); //purple
+                break;
+            case -1:
+            default:
+                glColor3f(0.0,0.0,1.0); //blue
+                break;
+        }
+        glTranslatef(orbit3d_list[i].x,orbit3d_list[i].y,orbit3d_list[i].z);
+        glutSolidSphere(0.02,10,10);
+        glPopMatrix();
+        
+    }
     glEnd();  //描画終了
     
     //RealWorld軸
@@ -141,7 +179,7 @@ void display()
     //glPopMatrix();
     glEnd();
         
-    if (status == false) {
+    if (running == false) {
         glutDestroyWindow ( glutGetWindow() );
         finish();
     }
@@ -336,8 +374,7 @@ void keyboard( unsigned char key, int x, int y )
     switch ( key )
     {
         case 27: // Escape key
-            glutDestroyWindow ( glutGetWindow() );
-            finish();
+            status = false;
             break;
     }
     glutPostRedisplay();

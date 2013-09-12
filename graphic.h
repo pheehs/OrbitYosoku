@@ -41,14 +41,18 @@ int xBegin, yBegin;
 
 extern cv::Mat image;         //RGB画像
 extern cv::Mat pointCloud_XYZ; //ポイントクラウド
-extern cv::Point3f center3d;
+extern cv::Point3f center3d_graphic;
 extern cv::Point3f predict3d;
 extern cv::Mat Xaxis,Yaxis,Zaxis;
 extern XnPlane3D plane;
 extern bool status;
+extern bool running;
 extern void finish();
 extern float at_float(cv::Mat,int,int);
+extern cv::Point3f target[2];
 
 void polarview();
+cv::Point3f orbit3d_list[100];
+int crashing[100];
 
 #endif /* defined(__OrbitYosoku__graphic__) */

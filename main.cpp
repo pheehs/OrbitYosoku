@@ -49,14 +49,15 @@ void init()
     namedWindow ("DepthMask", CV_WINDOW_AUTOSIZE);
     namedWindow ("Mask", CV_WINDOW_AUTOSIZE);
     namedWindow ("Centroid", CV_WINDOW_AUTOSIZE);
-    
-    bgs_rgb = new BGS(getImage);
-    bgs_depth = new BGS(getDepth);
+
+    camera_test();
+    bgs_rgb = new BGS(getImage, 1.0/200.0, 1.0/1000.0, 50.0);
+    bgs_depth = new BGS(getDepth, 1.0/10000.0, 1.0/50000.0, 70.0);
     //createTrackbar("rgb_thresh", "Mask", &bgs_rgb->B_PARAM, 100);
     //createTrackbar("depth_thresh", "Mask", &bgs_depth->T_PARAM, 100);
     
     lsm_XY = new LSM;
-
+    register_target();
 }
 
 void end()
@@ -170,23 +171,8 @@ bool retrieveForParabola(){
     Yaxis_prev = Yaxis.clone();
     Zaxis_prev = Zaxis.clone();
     
-    // Z軸は速度ベクトル２つに垂直なベクトルと平行（放物線を含む平面に垂直）
-    vvector2 = vvector1.clone();
-    vvector1.at<float>(0, 0) = (center3d.x - center3d_prev.x)*1000;
-    vvector1.at<float>(1, 0) = (center3d.y - center3d_prev.y)*1000;
-    vvector1.at<float>(2, 0) = (center3d.z - center3d_prev.z)*1000;
-    if (Xaxis_prev.dot(vvector1) < 0) { //YZ平面に対してX軸（今までの進行方向）と逆向きの速度ベクトルの場合（X軸が↑0のときを含まない）
-        cout << "[*] opposite vvector!" << endl;
-        return false; //放物線の運動は終了している
-    }
-    cout << "vvector: " << vvector1 << vvector2 << endl;
-    if (at_float(vvector2,0,0)==0 && at_float(vvector2, 1, 0)==0 && at_float(vvector2, 2, 0)==0) //速度ベクトルがまだ２つ取得できてない
-        return true; //放物線の運動はまだ始まったばかり
-    Zaxis = vvector1.cross(vvector2);
-    if (at_float(Zaxis, 0, 0) == 0 && at_float(Zaxis, 1, 0) == 0 && at_float(Zaxis, 2, 0)) { //２つの速度ベクトルが平行
-        return true; //放物線の運動は続いている可能性がある(放物線の一部を微視的に見れば直線っぽくなる)
-    }
-    Zaxis /= sqrt( at_float(Zaxis,0,0)*at_float(Zaxis,0,0) + at_float(Zaxis,1,0)*at_float(Zaxis,1,0) + at_float(Zaxis,2,0)*at_float(Zaxis,2,0));
+    cout << "axis_prev: " << Xaxis_prev << Yaxis_prev << Zaxis_prev << endl;
+    cout << "axis: " << Xaxis << Yaxis << Zaxis << endl;
     // Y軸は床の法線ベクトルと平行に（鉛直方向)
     printf("plane.vNormal: (%f, %f, %f)\n", plane.vNormal.X,plane.vNormal.Y,plane.vNormal.Z);
     if (plane.vNormal.X == 0 && plane.vNormal.Y == 0 && plane.vNormal.Z == 0) { //床を検出できてない→鉛直方向(Y軸)がわからない
@@ -200,10 +186,31 @@ bool retrieveForParabola(){
         Yaxis.at<float>(1,0) = plane.vNormal.Y / floor_len;
         Yaxis.at<float>(2,0) = plane.vNormal.Z / floor_len;
     }
+    // Z軸は速度ベクトル２つに垂直なベクトルと平行（放物線を含む平面に垂直）
+    //cout << "center3d: " << center3d << center3d_prev <<endl;
+    if (center3d_prev.x == 0 && center3d_prev.y == 0 && center3d_prev.z == 0) { //この瞬間の重心は取得してるがいっこまえのフレームでは取得してない
+        return true; //放物運動はこれから
+    }
+    cout << "vvector: " << vvector << endl;
+    vvector.at<float>(0, 0) = (center3d.x - center3d_prev.x)*1000;
+    vvector.at<float>(1, 0) = (center3d.y - center3d_prev.y)*1000;
+    vvector.at<float>(2, 0) = (center3d.z - center3d_prev.z)*1000;
+    if (Xaxis_prev.dot(vvector) < 0) { //YZ平面に対してX軸（今までの進行方向）と逆向きの速度ベクトルの場合（X軸が↑0のときを含まない）
+        cout << "[*] opposite vvector!" << endl<<endl;
+        return false; //放物線の運動は終了している
+    }
+    if (at_float(vvector,0,0)==0 && at_float(vvector, 1, 0)==0 && at_float(vvector, 2, 0)==0) //速度ベクトルがゼロベクトル
+        return false; //物体は静止している
+    Zaxis = Yaxis.cross(vvector);
+    if (at_float(Zaxis, 0, 0) == 0 && at_float(Zaxis, 1, 0) == 0 && at_float(Zaxis, 2, 0)) { //２つの速度ベクトルが平行
+        return true; //放物線の運動は続いている可能性がある(放物線の一部を微視的に見れば直線っぽくなる)
+    }
+    Zaxis /= sqrt( at_float(Zaxis,0,0)*at_float(Zaxis,0,0) + at_float(Zaxis,1,0)*at_float(Zaxis,1,0) + at_float(Zaxis,2,0)*at_float(Zaxis,2,0));
+    
     // X軸はY,Z軸に垂直で進行方向と同じ向き
     Xaxis = Zaxis.cross(Yaxis);
     Xaxis /= sqrt( at_float(Xaxis,0,0)*at_float(Xaxis,0,0) + at_float(Xaxis,1,0)*at_float(Xaxis,1,0) + at_float(Xaxis,2,0)*at_float(Xaxis,2,0));
-    if (Xaxis.dot(vvector1) < 0)
+    if (Xaxis.dot(vvector) < 0)
         Xaxis *= -1;
     // 軸のズレを確認
     Mat Xabsdiff, Yabsdiff,Zabsdiff,Xmaxdiff, Ymaxdiff, Zmaxdiff;
@@ -291,26 +298,10 @@ void drawFloor(Mat dest){
     }
 
 }
-void update()
-{
+Mat getMask() {
     Mat image_mask;
     Mat depth_mask;
     Mat mask;
-        
-    context.WaitAndUpdateAll();
-    
-    imageGenerator.GetMetaData(imageMD);
-    depthGenerator.GetMetaData(depthMD);
-    sceneAnalyzer.GetFloor(plane);
-    
-    memcpy(image.data,imageMD.Data(),image.step * image.rows);    //イメージデータを格納
-    memcpy(depth.data,depthMD.Data(),depth.step * depth.rows);    //深度データを格納
-    
-    //cvtColor(image, hsvimage, CV_BGR2HSV_FULL);	//HSV画像作成
-    cvtColor(image, image, CV_BGR2RGB);     //BGRをRGBに
-    
-    //3次元ポイントクラウドのための座標変換
-    retrievePointCloudMap(depth,pointCloud_XYZ);
     
     //RGB画像と深度画像でそれぞれ背景差分
     vector<Mat> channels;
@@ -345,6 +336,98 @@ void update()
     dilate(mask, mask, Mat());
     erode(mask, mask, Mat());
     
+    return mask;
+}
+void camera_test() {
+    cout << "camera test" << endl;
+    while (status != false) {
+        context.WaitAndUpdateAll();
+        
+        imageGenerator.GetMetaData(imageMD);
+        
+        memcpy(image.data,imageMD.Data(),image.step * image.rows);    //イメージデータを格納
+        
+        cvtColor(image, hsvimage, CV_BGR2HSV_FULL);	//HSV画像作成
+        cvtColor(image, image, CV_BGR2RGB);     //BGRをRGBに
+        
+        Mat centroid = image.clone();
+        putText(centroid, getFPS(), cvPoint(2, 28), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,200), 2, CV_AA);
+        imshow("Centroid", centroid);
+        
+    }
+    status = true;
+}
+void register_target() {
+    cout << "register_target" <<endl;
+    
+    for (int i = 0; i < 2; i++){
+        while (status != false) {
+            context.WaitAndUpdateAll();
+            
+            imageGenerator.GetMetaData(imageMD);
+            depthGenerator.GetMetaData(depthMD);
+            sceneAnalyzer.GetFloor(plane);
+            
+            memcpy(image.data,imageMD.Data(),image.step * image.rows);    //イメージデータを格納
+            memcpy(depth.data,depthMD.Data(),depth.step * depth.rows);    //深度データを格納
+            
+            cvtColor(image, hsvimage, CV_BGR2HSV_FULL);	//HSV画像作成
+            cvtColor(image, image, CV_BGR2RGB);     //BGRをRGBに
+            
+            //3次元ポイントクラウドのための座標変換
+            retrievePointCloudMap(depth,pointCloud_XYZ);
+            
+            Mat centroid = image.clone();
+            putText(centroid, getFPS(), cvPoint(2, 28), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,200), 2, CV_AA);
+            
+            Mat mask = getMask();
+            if(!mask.empty()) {
+                //　画面上での重心を計算
+                Moments m = moments(mask, true);
+                Point2f center2d(m.m10/m.m00, m.m01/m.m00);
+                circle( centroid, center2d, 8, Scalar(0,0,200), -1, 4, 0 );
+                //現実座標での重心を計算
+                center3d_prev = center3d;
+                center3d = pointCloud_XYZ.at<Point3f>((int)center2d.y,(int)center2d.x);
+                imshow("Mask", mask);
+            }
+            
+            imshow("Centroid", centroid);
+            
+        }
+        status = true;
+        target[i] = center3d;
+    }
+}
+int is_crashing(Point3f objpoint) {
+    const float RADIUS = 0.10;
+    
+    if (sqrt((target[0].x - objpoint.x)*(target[0].x - objpoint.x) + (target[0].y - objpoint.y)*(target[0].y - objpoint.y)+(target[0].z - objpoint.z)*(target[0].z - objpoint.z)) < RADIUS*2)
+        return 0;
+    if (sqrt((target[1].x - objpoint.x)*(target[1].x - objpoint.x) + (target[1].y - objpoint.y)*(target[1].y - objpoint.y)+(target[1].z - objpoint.z)*(target[1].z - objpoint.z)) < RADIUS*2)
+        return 1;
+    return -1;
+}
+void update()
+{
+    int target_n;
+    context.WaitAndUpdateAll();
+    
+    imageGenerator.GetMetaData(imageMD);
+    depthGenerator.GetMetaData(depthMD);
+    sceneAnalyzer.GetFloor(plane);
+    
+    memcpy(image.data,imageMD.Data(),image.step * image.rows);    //イメージデータを格納
+    memcpy(depth.data,depthMD.Data(),depth.step * depth.rows);    //深度データを格納
+    
+    cvtColor(image, hsvimage, CV_BGR2HSV_FULL);	//HSV画像作成
+    cvtColor(image, image, CV_BGR2RGB);     //BGRをRGBに
+    
+    //3次元ポイントクラウドのための座標変換
+    retrievePointCloudMap(depth,pointCloud_XYZ);
+    
+    Mat mask = getMask();
+    
     Mat centroid = image.clone();
     //drawFloor(centroid);
     //Point2f O2d;
@@ -365,6 +448,7 @@ void update()
             
         if (center3d.x!=0 && center3d.y!=0 && center3d.z!=0 //おそらくありえない座標なのでリセット用に使う
             && retrieveForParabola()) { //放物運動が続いてるか？　→放物線座標系の変換行列を求める
+            center3d_graphic = center3d;
             if (!all_zero(Rotate)) { //放物運動が続いていても、始まったばかりで変換行列がまだの時はスルー
                 predict3d = convertParabolicToReal(lsm_XY->predict());
                 
@@ -375,25 +459,37 @@ void update()
                 circle( centroid, predict2d, 8, Scalar(200,0,0), -1, 4, 0 );
                 
                 // 画面上での予測軌道を描画
-                int i = 1;
                 Point3f orbit3d;
                 Point2f orbit2d;
-                do {
+                //cout << "orbit::" <<endl;
+                
+                for (int i=1; i <= 100; i++) {
                     //0.01sec毎の軌跡
                     orbit3d = convertParabolicToReal(lsm_XY->predict(lsm_XY->t+1*i));
+                    if (lsm_XY->a == 0 && lsm_XY->c == 0 && lsm_XY->d == 0) { //データが１点しか取れてない
+                        break;
+                    }
+                    orbit3d_list[i-1] = orbit3d;
+                    if ((target_n = is_crashing(orbit3d)) != -1) {
+                        crashing[i-1] = target_n;
+                    } else {
+                        crashing[i-1] = -1;
+                    }
+                    ostringstream os;
+                    os << target_n;
+                    
+                    putText(centroid, os.str(), cvPoint(2, KINECT_WIDTH-20), FONT_HERSHEY_SIMPLEX, 1, Scalar(200,0,200), 2, CV_AA);
+                    
                     convertRealToProjective(orbit3d, orbit2d);
                     circle( centroid, orbit2d, 5, Scalar(0,200,0), -1, 4, 0 );
-                    i++;
-                } while (0 < orbit2d.x < KINECT_WIDTH && 0 < orbit2d.y < KINECT_HEIGHT && i < 1000);
+                    
+                }
                 //画面外か、1sec以上経過で終了
                 
                 printf("center3d: %f, %f, %f\n", center3d.x, center3d.y, center3d.z);
                 printf("predict3d: %f, %f, %f\n", predict3d.x, predict3d.y, predict3d.z);
                 //最小二乗法
                 lsm_XY->process(convertRealToParabolic(center3d));
-                printf("x = %f t+ %f\n", lsm_XY->a, lsm_XY->b);
-                printf("y = %f t^2+ %f t+ %f\n", lsm_XY->c, lsm_XY->d, lsm_XY->e);
-                printf("z = %f\n", lsm_XY->z);
                 cout << endl;
             }
         }else{ //物体を見失ったとき
@@ -401,14 +497,12 @@ void update()
             lsm_XY->tick();
             //さっきなで追跡してた物体に関する情報をリセット
             center3d = Point3f(0,0,0);
-            vvector1.zeros(3, 1, CV_32FC1);
-            vvector2.zeros(3, 1, CV_32FC1);
+            vvector.zeros(3, 1, CV_32FC1);
         }
         imshow("Mask", mask);
     }else{ //マスクが何故か空のとき
         center3d = Point3f(0,0,0);
-        vvector1.zeros(3, 1, CV_32FC1);
-        vvector2.zeros(3, 1, CV_32FC1);
+        vvector.zeros(3, 1, CV_32FC1);
     }
     putText(centroid, getFPS(), cvPoint(2, 28), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,200), 2, CV_AA);
     imshow("Centroid", centroid);
@@ -418,10 +512,11 @@ void update()
 void* mainloop(void* args)
 {
     init();
-    while (waitKey(1) != 27 && status != false) {
+    while (status != false) {
         update();
     }
     status = false;
+    running = false;
     cout << "ending @process thread" << endl;
     end();
     return (void*)NULL;
@@ -431,6 +526,7 @@ void finish()
 {
     // called from graphic(main) thread
     status = false;
+    running = false;
     
     int r = pthread_join(process_th, NULL);
     if (r != 0) {

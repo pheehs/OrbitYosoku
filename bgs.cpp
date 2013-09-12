@@ -18,8 +18,8 @@
 using namespace std;
 using namespace cv;
 
-BGS::BGS(Mat (*getFrame)())
-:INIT_TIME(100),B_PARAM(1.0 / 200.0),T_PARAM(1.0 / 1000.0),Zeta(40.0)
+BGS::BGS(Mat (*getFrame)(), float bparam,float tparam, float zeta)
+:INIT_TIME(100),B_PARAM(bparam),T_PARAM(tparam),Zeta(zeta)
 {
     cout << "Background statistics initialization start" << endl;
     
