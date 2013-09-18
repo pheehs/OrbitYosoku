@@ -49,6 +49,7 @@ void init()
     namedWindow ("DepthMask", CV_WINDOW_AUTOSIZE);
     namedWindow ("Mask", CV_WINDOW_AUTOSIZE);
     namedWindow ("Centroid", CV_WINDOW_AUTOSIZE);
+    namedWindow ("Target", CV_WINDOW_AUTOSIZE);
 
     camera_test();
     bgs_rgb = new BGS(getImage, 1.0/200.0, 1.0/1000.0, 50.0);
@@ -113,28 +114,7 @@ string getFPS()
     cnt++;
     return os.str();
 }
-Point3f getCentroid(Mat mask, Mat pointCloud)
-{
-    float sumX = 0, sumY = 0, sumZ = 0;
-    int counter = 0;
-    Point3f point;
-    
-    for (int y = 0; y < KINECT_HEIGHT; y++) {
-        for (int x = 0; x < KINECT_WIDTH; x++) {
-            if (mask.at<int>(y,x)) {
-                point = pointCloud.at<Point3f>(y, x);
-                if (point.z != 0) {
-                    sumX += point.x;
-                    sumY += point.y;
-                    sumZ += point.z;
-                    counter++;
-                }
-            }
-            
-        }
-    }
-    return Point3f(sumX/counter, sumY/counter, sumZ/counter);
-}
+
 //3次元ポイントクラウドのための座標変換
 void retrievePointCloudMap(Mat &depth,Mat &pointCloud_XYZ){
     static XnPoint3D proj[KINECT_HEIGHT * KINECT_WIDTH] = {0};
@@ -276,28 +256,7 @@ bool all_zero(Mat mat) {
     }
     return true;
 }
-//床平面描画
-void drawFloor(Mat dest){
-    //cout << "point(" << plane.ptPoint.X << "," << plane.ptPoint.Y << "," << plane.ptPoint.Z << "), normal(" << plane.vNormal.X << "," << plane.vNormal.Y << "," << plane.vNormal.Z << ")" << endl ;
-    if (plane.vNormal.X == 0 && plane.vNormal.Y == 0 && plane.vNormal.Z == 0){
-        return;
-    }
-    float floor_d = plane.vNormal.X*plane.ptPoint.X + plane.vNormal.Y*plane.ptPoint.Y + plane.vNormal.Z*plane.ptPoint.Z;
-    //printf("floor: %f x + %f y + %f z = %f\n", plane.vNormal.X, plane.vNormal.Y, plane.vNormal.Z, floor_d);
 
-    //printf("(%f, %f, %f)", plane.ptPoint.X,plane.ptPoint.Y,plane.ptPoint.Z);
-    Point3f plane3d;
-    Point2f plane2d;
-    for (int xi = 0; xi < 100; xi++) {
-        for (int yi = 0; yi < 100; yi++) {
-            plane3d = Point3f(plane.ptPoint.X - xi, plane.ptPoint.Y - yi, (floor_d - plane.vNormal.X*(plane.ptPoint.X-xi) - plane.vNormal.Y*(plane.ptPoint.Y-yi)) / plane.vNormal.Z);
-            convertRealToProjective(plane3d, plane2d);
-            circle( dest, plane2d, 8, Scalar(0,200,0), -1, 4, 0 );
-            //printf("(%f,%f,%f)", plane.ptPoint.X + xi, plane.ptPoint.Y + yi, (floor_d - plane.vNormal.X*(plane.ptPoint.X+xi) - plane.vNormal.Y*(plane.ptPoint.Y+yi)) / plane.vNormal.Z);
-        }
-    }
-
-}
 Mat getMask() {
     Mat image_mask;
     Mat depth_mask;
@@ -318,10 +277,7 @@ Mat getMask() {
     
     //imshow("RGBImage", image);
     //imshow("DepthImage", depth);
-    if (!image_mask.empty())
-        imshow("RGBMask", image_mask);
-    if (!depth_mask.empty())
-        imshow("DepthMask", depth_mask);
+
     // RGBと深度の両方で検出された領域を抽出
     bitwise_or(image_mask, depth_mask, mask);
     // 収縮と膨張でノイズな領域を削除。「重要な処理」
@@ -336,9 +292,19 @@ Mat getMask() {
     dilate(mask, mask, Mat());
     erode(mask, mask, Mat());
     
+    if (!image_mask.empty()) {
+        flip(image_mask, image_mask, 1);
+        imshow("RGBMask", image_mask);
+    }
+    if (!depth_mask.empty()) {
+        flip(depth_mask, depth_mask, 1);
+        imshow("DepthMask", depth_mask);
+    }
+    
     return mask;
 }
 void camera_test() {
+    Mat centroid;
     cout << "camera test" << endl;
     while (status != false) {
         context.WaitAndUpdateAll();
@@ -350,14 +316,19 @@ void camera_test() {
         cvtColor(image, hsvimage, CV_BGR2HSV_FULL);	//HSV画像作成
         cvtColor(image, image, CV_BGR2RGB);     //BGRをRGBに
         
-        Mat centroid = image.clone();
+        flip(image, centroid, 1);
         putText(centroid, getFPS(), cvPoint(2, 28), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,200), 2, CV_AA);
         imshow("Centroid", centroid);
         
     }
     status = true;
 }
+Point2f flip_point2f(Point2f point) {
+    Point2f result(KINECT_WIDTH - point.x, point.y);
+    return result;
+}
 void register_target() {
+    Mat centroid;
     cout << "register_target" <<endl;
     
     for (int i = 0; i < 2; i++){
@@ -376,8 +347,7 @@ void register_target() {
             
             //3次元ポイントクラウドのための座標変換
             retrievePointCloudMap(depth,pointCloud_XYZ);
-            
-            Mat centroid = image.clone();
+            flip(image, centroid, 1);
             putText(centroid, getFPS(), cvPoint(2, 28), FONT_HERSHEY_SIMPLEX, 1, Scalar(0,0,200), 2, CV_AA);
             
             Mat mask = getMask();
@@ -385,10 +355,11 @@ void register_target() {
                 //　画面上での重心を計算
                 Moments m = moments(mask, true);
                 Point2f center2d(m.m10/m.m00, m.m01/m.m00);
-                circle( centroid, center2d, 8, Scalar(0,0,200), -1, 4, 0 );
+                circle( centroid, flip_point2f(center2d), 8, Scalar(0,0,200), -1, 4, 0 );
                 //現実座標での重心を計算
                 center3d_prev = center3d;
                 center3d = pointCloud_XYZ.at<Point3f>((int)center2d.y,(int)center2d.x);
+                flip(mask, mask, 1);
                 imshow("Mask", mask);
             }
             
@@ -396,6 +367,7 @@ void register_target() {
             
         }
         status = true;
+        cout << "target" << i << ": " << center3d <<endl;
         target[i] = center3d;
     }
 }
@@ -408,9 +380,51 @@ int is_crashing(Point3f objpoint) {
         return 1;
     return -1;
 }
+void estimateDestination() {
+    const float MIN_MOVE = 200;
+    cout << "<<<<<---estimateDestination--->>>>>" <<endl;
+    if (at_float(vvector, 0, 0)*at_float(vvector, 0, 0)+at_float(vvector, 1, 0)*at_float(vvector, 1, 0)+at_float(vvector, 2, 0)*at_float(vvector, 2, 0) < MIN_MOVE) { //物体が動いていないとき
+        //-1
+        imshow("Target", white_img);
+        return;
+    }
+    Point3f paratarget, paracenter;
+    Point3f paravvec(at_float(vvector,0,0), at_float(vvector, 1, 0), at_float(vvector, 2, 0));
+    paravvec = convertRealToParabolic(paravvec);
+    Mat totarget_xz = (Mat_<float>(2, 1));
+    Mat vvec_xz = (Mat_<float>(2, 1) << paravvec.x,paravvec.z);
+    cout << "vvec_xz: " << vvec_xz <<endl;
+    paracenter = convertRealToParabolic(center3d);
+    float vector_angle[2] = {0};
+    
+    for (int i=0; i < 2; i++) {
+        paratarget = convertRealToParabolic(target[i]);
+        totarget_xz.at<float>(0,0) = paratarget.x - paracenter.x;
+        totarget_xz.at<float>(1,0) = paratarget.z - paracenter.z;
+        cout << "totarget_xz" << i << ": " <<totarget_xz <<endl;
+
+        vector_angle[i] = totarget_xz.dot(vvec_xz)
+        / sqrt(at_float(totarget_xz,0,0)*at_float(totarget_xz,0,0)+at_float(totarget_xz,1,0)*at_float(totarget_xz,1,0)) //length of totarget_xz
+        / sqrt(at_float(vvec_xz, 0, 0)*at_float(vvec_xz, 0, 0)+at_float(vvec_xz, 1, 0)*at_float(vvec_xz, 1, 0)); //length of vvec_xz
+        cout << "vector_angle" <<i<< ": " <<vector_angle[i] <<endl;
+    }
+    if (vector_angle[0] > vector_angle[1]) {
+        //0
+        imshow("Target", yellow_img);
+        //lightLED(0);
+    } else if (vector_angle[0] < vector_angle[1]) {
+        //1
+        imshow("Target", blue_img);
+        // lightLED(1);
+    } else{
+        //-1
+        imshow("Target", white_img);
+    }
+}
 void update()
 {
     int target_n;
+    Mat centroid;
     context.WaitAndUpdateAll();
     
     imageGenerator.GetMetaData(imageMD);
@@ -428,14 +442,8 @@ void update()
     
     Mat mask = getMask();
     
-    Mat centroid = image.clone();
-    //drawFloor(centroid);
-    //Point2f O2d;
-    //Point3f O3d(0,0,0);
-    //convertRealToProjective(O3d, O2d);
-    //cout << "real(0,0,0) -> proj" << O2d << endl;
-    //circle(centroid, O2d, 8, Scalar(200,200,200));
-    
+    flip(image, centroid, 1);
+
     if (!mask.empty()) {
         
         //　画面上での重心を計算
@@ -444,26 +452,26 @@ void update()
         //現実座標での重心を計算
         center3d_prev = center3d;
         center3d = pointCloud_XYZ.at<Point3f>((int)center2d.y,(int)center2d.x);
-        //center3d = getCentroid(mask, pointCloud_XYZ);
             
         if (center3d.x!=0 && center3d.y!=0 && center3d.z!=0 //おそらくありえない座標なのでリセット用に使う
             && retrieveForParabola()) { //放物運動が続いてるか？　→放物線座標系の変換行列を求める
             center3d_graphic = center3d;
             if (!all_zero(Rotate)) { //放物運動が続いていても、始まったばかりで変換行列がまだの時はスルー
+                estimateDestination();
                 predict3d = convertParabolicToReal(lsm_XY->predict());
                 
                 /// 重心（赤）と予想した重心（青）の描画
                 Point2f predict2d;
                 convertRealToProjective(predict3d, predict2d);
-                circle( centroid, center2d, 8, Scalar(0,0,200), -1, 4, 0 );
-                circle( centroid, predict2d, 8, Scalar(200,0,0), -1, 4, 0 );
+                circle( centroid, flip_point2f(center2d), 8, Scalar(0,0,200), -1, 4, 0 );
+                //circle( centroid, flip_point2f(predict2d), 8, Scalar(200,0,0), -1, 4, 0 );
                 
                 // 画面上での予測軌道を描画
                 Point3f orbit3d;
                 Point2f orbit2d;
                 //cout << "orbit::" <<endl;
                 
-                for (int i=1; i <= 100; i++) {
+                /*for (int i=1; i <= 100; i++) {
                     //0.01sec毎の軌跡
                     orbit3d = convertParabolicToReal(lsm_XY->predict(lsm_XY->t+1*i));
                     if (lsm_XY->a == 0 && lsm_XY->c == 0 && lsm_XY->d == 0) { //データが１点しか取れてない
@@ -481,9 +489,9 @@ void update()
                     putText(centroid, os.str(), cvPoint(2, KINECT_WIDTH-20), FONT_HERSHEY_SIMPLEX, 1, Scalar(200,0,200), 2, CV_AA);
                     
                     convertRealToProjective(orbit3d, orbit2d);
-                    circle( centroid, orbit2d, 5, Scalar(0,200,0), -1, 4, 0 );
+                    circle( centroid, flip_point2f(orbit2d), 5, Scalar(0,200,0), -1, 4, 0 );
                     
-                }
+                }*/
                 //画面外か、1sec以上経過で終了
                 
                 printf("center3d: %f, %f, %f\n", center3d.x, center3d.y, center3d.z);
@@ -498,7 +506,9 @@ void update()
             //さっきなで追跡してた物体に関する情報をリセット
             center3d = Point3f(0,0,0);
             vvector.zeros(3, 1, CV_32FC1);
+            imshow("Target", white_img);
         }
+        flip(mask, mask, 1);
         imshow("Mask", mask);
     }else{ //マスクが何故か空のとき
         center3d = Point3f(0,0,0);

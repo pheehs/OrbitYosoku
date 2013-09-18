@@ -65,19 +65,19 @@ void LSM::process(cv::Point3f datapoint)
     sy += datapoint.y;
     sty += t*datapoint.y;
     st2y += t*t*datapoint.y;
-    printf("t:%u\n",t);
-    printf("x:%f\n", datapoint.x);
-    printf("y:%f\n", datapoint.y);
-    printf("s1:%f\n", s1);
-    printf("st:%f\n", st);
-    printf("st2:%f\n", st2);
-    printf("stx:%f\n", stx);
-    printf("sx:%f\n", sx);
-    printf("st3:%f\n", st3);
-    printf("st4:%f\n", st4);
-    printf("sy:%f\n", sy);
-    printf("sty:%f\n", sty);
-    printf("st2y:%f\n", st2y);
+    //printf("t:%u\n",t);
+    //printf("x:%f\n", datapoint.x);
+    //printf("y:%f\n", datapoint.y);
+    //printf("s1:%f\n", s1);
+    //printf("st:%f\n", st);
+    //printf("st2:%f\n", st2);
+    //printf("stx:%f\n", stx);
+    //printf("sx:%f\n", sx);
+    //printf("st3:%f\n", st3);
+    //printf("st4:%f\n", st4);
+    //printf("sy:%f\n", sy);
+    //printf("sty:%f\n", sty);
+    //printf("st2y:%f\n", st2y);
     
     if ((st3*st3-st2*st4)!=0 && (st2)!=0) {
         a = ((double)(stx-st*b)/(st2));

@@ -40,6 +40,9 @@ cv::Mat Yaxis_prev = cv::Mat::zeros(3,1,CV_32FC1); //Y軸方向単位ベクト�
 cv::Mat Zaxis_prev = cv::Mat::zeros(3,1,CV_32FC1); //Z軸方向単位ベクトル
 cv::Mat Rotate = cv::Mat::zeros(3, 3, CV_32FC1);
 cv::Mat Rotate_inv = cv::Mat::zeros(3, 3, CV_32FC1);
+cv::Mat white_img(KINECT_HEIGHT, KINECT_WIDTH, CV_8UC3, cv::Scalar::all(255));
+cv::Mat yellow_img(KINECT_HEIGHT, KINECT_WIDTH, CV_8UC3, cv::Scalar(0,255,255));
+cv::Mat blue_img(KINECT_HEIGHT, KINECT_WIDTH, CV_8UC3, cv::Scalar(255,0,0));
 
 //FPS
 int cnt = 0; // frame数
